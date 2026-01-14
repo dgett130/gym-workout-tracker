@@ -1,47 +1,26 @@
 import { NextResponse } from "next/server"
-import { promises as fs } from "fs"
-import path from "path"
+import { db } from "@/lib/db/db"
+import { workouts, exercises } from "@/lib/db/schema"
+import { eq, desc } from "drizzle-orm"
 
-export interface Exercise {
-  name: string
-  sets: string
-  reps: string
-  weight: string
-}
-
-export interface Workout {
-  date: string
-  exercises: Exercise[]
-}
-
-const DATA_FILE = path.join(process.cwd(), "data", "workouts.json")
-
-async function ensureDataFile() {
-  try {
-    await fs.access(DATA_FILE)
-  } catch {
-    await fs.mkdir(path.dirname(DATA_FILE), { recursive: true })
-    await fs.writeFile(DATA_FILE, JSON.stringify([]))
-  }
-}
-
-async function readWorkouts(): Promise<Workout[]> {
-  await ensureDataFile()
-  const content = await fs.readFile(DATA_FILE, "utf-8")
-  return JSON.parse(content)
-}
-
-async function writeWorkouts(workouts: Workout[]): Promise<void> {
-  await ensureDataFile()
-  await fs.writeFile(DATA_FILE, JSON.stringify(workouts, null, 2))
+// Helper function to parse Italian date
+function parseItalianDate(dateStr: string): Date {
+  const [day, month, year] = dateStr.split("/").map(Number)
+  return new Date(year, month - 1, day)
 }
 
 export async function GET() {
   try {
-    const workouts = await readWorkouts()
+    // Fetch all workouts with their exercises
+    const allWorkouts = await db.query.workouts.findMany({
+      with: {
+        exercises: true,
+      },
+      orderBy: [desc(workouts.id)], // We'll sort by date in JS to match previous behavior
+    })
 
     // Sort by date (most recent first)
-    const sorted = workouts.sort((a, b) => {
+    const sorted = allWorkouts.sort((a, b) => {
       const dateA = parseItalianDate(a.date)
       const dateB = parseItalianDate(b.date)
       return dateB.getTime() - dateA.getTime()
@@ -56,24 +35,43 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
-    const { date, exercises } = await request.json()
+    const { date, exercises: newExercises } = await request.json()
 
-    if (!date || !exercises || !Array.isArray(exercises)) {
+    if (!date || !newExercises || !Array.isArray(newExercises)) {
       return NextResponse.json({ error: "Invalid data" }, { status: 400 })
     }
 
-    const workouts = await readWorkouts()
-    const existingIndex = workouts.findIndex((w) => w.date === date)
+    // Check if workout for this date already exists
+    const existingWorkout = await db.query.workouts.findFirst({
+      where: eq(workouts.date, date),
+    })
 
-    if (existingIndex >= 0) {
-      // Append exercises to existing workout
-      workouts[existingIndex].exercises.push(...exercises)
+    let workoutId: number
+
+    if (existingWorkout) {
+      workoutId = existingWorkout.id
     } else {
       // Create new workout
-      workouts.push({ date, exercises })
+      const [newWorkout] = await db
+        .insert(workouts)
+        .values({ date })
+        .returning({ id: workouts.id })
+
+      workoutId = newWorkout.id
     }
 
-    await writeWorkouts(workouts)
+    // Insert exercises
+    if (newExercises.length > 0) {
+      await db.insert(exercises).values(
+        newExercises.map((ex: any) => ({
+          workoutId,
+          name: ex.name,
+          sets: ex.sets.toString(),
+          reps: ex.reps.toString(),
+          weight: ex.weight.toString(),
+        }))
+      )
+    }
 
     return NextResponse.json({ success: true })
   } catch (error) {
@@ -91,19 +89,12 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Date required" }, { status: 400 })
     }
 
-    const workouts = await readWorkouts()
-    const filtered = workouts.filter((w) => w.date !== date)
-
-    await writeWorkouts(filtered)
+    // Delete workout (cascade will handle exercises)
+    await db.delete(workouts).where(eq(workouts.date, date))
 
     return NextResponse.json({ success: true })
   } catch (error) {
     console.error("[v0] Error deleting workout:", error)
     return NextResponse.json({ error: "Failed to delete workout" }, { status: 500 })
   }
-}
-
-function parseItalianDate(dateStr: string): Date {
-  const [day, month, year] = dateStr.split("/").map(Number)
-  return new Date(year, month - 1, day)
 }
