@@ -14,6 +14,7 @@ import { Button } from "@/components/ui/button"
 import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar"
 import { User, Settings, LogOut } from "lucide-react"
 import { signOut } from "next-auth/react"
+import { useToast } from "@/hooks/use-toast"
 
 interface UserNavProps {
     user: {
@@ -24,6 +25,7 @@ interface UserNavProps {
 }
 
 export function UserNav({ user }: UserNavProps) {
+    const { toast } = useToast()
     const initials = user.name
         ?.split(" ")
         .map((n) => n[0])
@@ -52,12 +54,12 @@ export function UserNav({ user }: UserNavProps) {
                 </DropdownMenuLabel>
                 <DropdownMenuSeparator />
                 <DropdownMenuGroup>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toast({ title: "Funzionalità in sviluppo", description: "La sezione Profilo sarà presto disponibile." })}>
                         <User className="mr-2 h-4 w-4" />
                         <span>Profilo</span>
                         <DropdownMenuShortcut>⇧⌘P</DropdownMenuShortcut>
                     </DropdownMenuItem>
-                    <DropdownMenuItem>
+                    <DropdownMenuItem onClick={() => toast({ title: "Funzionalità in sviluppo", description: "La sezione Impostazioni sarà presto disponibile." })}>
                         <Settings className="mr-2 h-4 w-4" />
                         <span>Impostazioni</span>
                         <DropdownMenuShortcut>⌘S</DropdownMenuShortcut>
