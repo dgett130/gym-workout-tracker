@@ -53,7 +53,7 @@ export function RecentExercises({ onExerciseSelect }: RecentExercisesProps) {
     }
 
     return (
-        <Card className="mb-8">
+        <Card id="recent-exercises" className="mb-8">
             <CardHeader>
                 <div className="flex items-center justify-between">
                     <div>

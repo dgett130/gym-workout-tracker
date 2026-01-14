@@ -1,11 +1,12 @@
 import { relations } from "drizzle-orm"
-import { pgTable, serial, text, timestamp, uuid, integer } from "drizzle-orm/pg-core"
+import { pgTable, serial, text, timestamp, uuid, integer, boolean } from "drizzle-orm/pg-core"
 
 export const users = pgTable("users", {
     id: uuid("id").primaryKey().defaultRandom(),
     name: text("name").notNull(),
     email: text("email").notNull().unique(),
     password: text("password").notNull(),
+    hasSeenGuide: boolean("has_seen_guide").default(false).notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
 })
 
