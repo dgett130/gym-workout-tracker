@@ -1,7 +1,8 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db/db"
 import { workouts, exercises } from "@/lib/db/schema"
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, and } from "drizzle-orm"
+import { auth } from "@/auth"
 
 // Helper function to parse Italian date
 function parseItalianDate(dateStr: string): Date {
@@ -11,16 +12,23 @@ function parseItalianDate(dateStr: string): Date {
 
 export async function GET() {
   try {
-    // Fetch all workouts with their exercises
-    const allWorkouts = await db.query.workouts.findMany({
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    const userId = session.user.id
+
+    // Fetch all workouts for this user with their exercises
+    const userWorkouts = await db.query.workouts.findMany({
+      where: eq(workouts.userId, userId),
       with: {
         exercises: true,
       },
-      orderBy: [desc(workouts.id)], // We'll sort by date in JS to match previous behavior
+      orderBy: [desc(workouts.id)],
     })
 
     // Sort by date (most recent first)
-    const sorted = allWorkouts.sort((a, b) => {
+    const sorted = userWorkouts.sort((a, b) => {
       const dateA = parseItalianDate(a.date)
       const dateB = parseItalianDate(b.date)
       return dateB.getTime() - dateA.getTime()
@@ -35,15 +43,24 @@ export async function GET() {
 
 export async function POST(request: Request) {
   try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    const userId = session.user.id
+
     const { date, exercises: newExercises } = await request.json()
 
     if (!date || !newExercises || !Array.isArray(newExercises)) {
       return NextResponse.json({ error: "Invalid data" }, { status: 400 })
     }
 
-    // Check if workout for this date already exists
+    // Check if workout for this date ALREADY EXISTS FOR THIS USER
     const existingWorkout = await db.query.workouts.findFirst({
-      where: eq(workouts.date, date),
+      where: and(
+        eq(workouts.date, date),
+        eq(workouts.userId, userId)
+      ),
     })
 
     let workoutId: number
@@ -51,10 +68,13 @@ export async function POST(request: Request) {
     if (existingWorkout) {
       workoutId = existingWorkout.id
     } else {
-      // Create new workout
+      // Create new workout for this user
       const [newWorkout] = await db
         .insert(workouts)
-        .values({ date })
+        .values({
+          date,
+          userId,
+        })
         .returning({ id: workouts.id })
 
       workoutId = newWorkout.id
@@ -82,6 +102,12 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
   try {
+    const session = await auth()
+    if (!session?.user?.id) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+    }
+    const userId = session.user.id
+
     const { searchParams } = new URL(request.url)
     const date = searchParams.get("date")
 
@@ -89,8 +115,12 @@ export async function DELETE(request: Request) {
       return NextResponse.json({ error: "Date required" }, { status: 400 })
     }
 
-    // Delete workout (cascade will handle exercises)
-    await db.delete(workouts).where(eq(workouts.date, date))
+    // Delete workout ONLY IF it belongs to this user
+    await db.delete(workouts)
+      .where(and(
+        eq(workouts.date, date),
+        eq(workouts.userId, userId)
+      ))
 
     return NextResponse.json({ success: true })
   } catch (error) {

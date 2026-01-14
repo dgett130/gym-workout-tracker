@@ -1,11 +1,22 @@
 import { NextResponse } from "next/server"
 import { db } from "@/lib/db/db"
 import { templates } from "@/lib/db/schema"
-import { eq, desc } from "drizzle-orm"
+import { eq, desc, and } from "drizzle-orm"
+import { auth } from "@/auth"
 
 export async function GET() {
     try {
-        const allTemplates = await db.select().from(templates).orderBy(desc(templates.createdAt))
+        const session = await auth()
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        }
+        const userId = session.user.id
+
+        const allTemplates = await db.select()
+            .from(templates)
+            .where(eq(templates.userId, userId))
+            .orderBy(desc(templates.createdAt))
+
         return NextResponse.json(allTemplates)
     } catch (error) {
         console.error("[v0] Error reading templates:", error)
@@ -15,6 +26,12 @@ export async function GET() {
 
 export async function POST(request: Request) {
     try {
+        const session = await auth()
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        }
+        const userId = session.user.id
+
         const exercise = await request.json()
 
         if (!exercise.name || !exercise.sets || !exercise.reps || !exercise.weight) {
@@ -22,6 +39,7 @@ export async function POST(request: Request) {
         }
 
         const [newTemplate] = await db.insert(templates).values({
+            userId,
             name: exercise.name,
             sets: exercise.sets.toString(),
             reps: exercise.reps.toString(),
@@ -37,6 +55,12 @@ export async function POST(request: Request) {
 
 export async function DELETE(request: Request) {
     try {
+        const session = await auth()
+        if (!session?.user?.id) {
+            return NextResponse.json({ error: "Unauthorized" }, { status: 401 })
+        }
+        const userId = session.user.id
+
         const { searchParams } = new URL(request.url)
         const id = searchParams.get("id")
 
@@ -44,7 +68,12 @@ export async function DELETE(request: Request) {
             return NextResponse.json({ error: "ID required" }, { status: 400 })
         }
 
-        await db.delete(templates).where(eq(templates.id, id))
+        // Ensure we only delete templates belonging to the user
+        await db.delete(templates)
+            .where(and(
+                eq(templates.id, id),
+                eq(templates.userId, userId)
+            ))
 
         return NextResponse.json({ success: true })
     } catch (error) {
