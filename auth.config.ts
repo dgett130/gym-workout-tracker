@@ -27,11 +27,22 @@ export const authConfig = {
 
             return true
         },
-        session({ session, token }) {
+        async session({ session, token }) {
             if (token.sub && session.user) {
                 session.user.id = token.sub
+                session.user.hasSeenGuide = token.hasSeenGuide as boolean
             }
             return session
+        },
+        async jwt({ token, user, trigger, session }) {
+            if (user) {
+                token.hasSeenGuide = user.hasSeenGuide
+            }
+            // Add support for updating the session manually
+            if (trigger === "update" && session?.hasSeenGuide !== undefined) {
+                token.hasSeenGuide = session.hasSeenGuide
+            }
+            return token
         },
     },
     providers: [], // Add providers with an empty array for now
