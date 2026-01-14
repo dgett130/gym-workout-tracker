@@ -9,6 +9,7 @@ import { Dumbbell } from "lucide-react"
 import type { Exercise } from "@/lib/workout-storage"
 import { TourGuide } from "@/components/tour-guide"
 import { User } from "next-auth"
+import { UserNav } from "./user-nav"
 
 interface DashboardProps {
     user: User & { hasSeenGuide: boolean }
@@ -43,7 +44,7 @@ export function Dashboard({ user }: DashboardProps) {
 
                         <div id="user-menu" className="flex items-center gap-2">
                             <TourGuide hasSeenGuide={user.hasSeenGuide} />
-                            {/* User menu placeholder or actual menu if needed */}
+                            <UserNav user={user} />
                         </div>
                     </div>
                 </div>
